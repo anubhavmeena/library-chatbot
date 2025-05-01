@@ -3,6 +3,8 @@ from PIL import Image, ImageDraw, ImageFont
 import razorpay
 import os
 import requests
+import hmac
+import hashlib
 
 from twilio.rest import Client
 
@@ -13,6 +15,8 @@ razorpay_client = razorpay.Client(auth=(
     os.getenv("RAZORPAY_KEY_ID"),
     os.getenv("RAZORPAY_SECRET")
 ))
+
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")
 
 twilio_client = Client(
     os.getenv("TWILIO_ACCOUNT_SID"),
@@ -106,16 +110,24 @@ def whatsapp_bot():
                     f.write(r.content)
                 session['photo'] = photo_path
 
-                order = razorpay_client.order.create({
+                # Create Razorpay payment link instead of raw order
+                payment_link = razorpay_client.payment_link.create({
                     "amount": session['amount'] * 100,
                     "currency": "INR",
-                    "payment_capture": "1"
+                    "accept_partial": False,
+                    "description": "Library Membership",
+                    "customer": {
+                        "name": session['name'],
+                        "contact": phone,
+                        "email": f"{phone}@example.com"  # Dummy email
+                    },
+                    "notify": {"sms": False, "email": False}
                 })
-                session['order_id'] = order['id']
-                session['stage'] = 'payment'
 
-                pay_link = f"https://rzp.io/l/{order['id']}"
-                send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
+                session['payment_link_id'] = payment_link['id']
+                session['stage'] = 'payment'
+                send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {payment_link['short_url']}")
+
         elif session['stage'] == 'payment':
             send_whatsapp(f"whatsapp:{phone}", "Waiting for payment confirmation...")
 
@@ -123,6 +135,38 @@ def whatsapp_bot():
     except Exception as e:
         print("Error in /webhook:", str(e))
         return "Error", 500
+
+@app.route("/razorpay_webhook", methods=["POST"])
+def razorpay_webhook():
+    try:
+        payload = request.data
+        received_signature = request.headers.get('X-Razorpay-Signature')
+
+        generated_signature = hmac.new(
+            bytes(RAZORPAY_WEBHOOK_SECRET, 'utf-8'),
+            msg=payload,
+            digestmod=hashlib.sha256
+        ).hexdigest()
+
+        if hmac.compare_digest(received_signature, generated_signature):
+            data = request.get_json()
+            if data.get("event") == "payment_link.paid":
+                entity = data['payload']['payment_link']['entity']
+                contact = entity['customer']['contact']
+                phone = contact.replace('+91', '')
+                session = sessions.get(phone)
+
+                if session:
+                    card_path = generate_id_card(session, session['photo'])
+                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://yourdomain.com/{card_path}")
+                    session['stage'] = 'done'
+
+            return jsonify({"status": "ok"}), 200
+        else:
+            return jsonify({"status": "invalid signature"}), 403
+    except Exception as e:
+        print("Webhook error:", str(e))
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
