@@ -1,13 +1,23 @@
-
 from flask import Flask, request, jsonify
 from PIL import Image, ImageDraw, ImageFont
 import razorpay
 import os
 import requests
 
+from twilio.rest import Client
+
 app = Flask(__name__)
 
-razorpay_client = razorpay.Client(auth=("RAZORPAY_KEY_ID", "RAZORPAY_SECRET"))
+# Load secrets from environment variables
+razorpay_client = razorpay.Client(auth=(
+    os.getenv("RAZORPAY_KEY_ID"),
+    os.getenv("RAZORPAY_SECRET")
+))
+
+twilio_client = Client(
+    os.getenv("TWILIO_ACCOUNT_SID"),
+    os.getenv("TWILIO_AUTH_TOKEN")
+)
 
 sessions = {}
 
@@ -18,9 +28,6 @@ LIBRARY_PLANS = {
 }
 
 def send_whatsapp(to, body, media_url=None):
-    from twilio.rest import Client
-    client = Client("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN")
-
     message_data = {
         'from_': 'whatsapp:+14155238886',
         'body': body
@@ -28,10 +35,13 @@ def send_whatsapp(to, body, media_url=None):
     if media_url:
         message_data['media_url'] = [media_url]
 
-    message = client.messages.create(to=to, **message_data)
+    message = twilio_client.messages.create(to=to, **message_data)
     return message.sid
 
 def generate_id_card(data, photo_path):
+    if not os.path.exists("static"):
+        os.makedirs("static")
+
     card = Image.new('RGB', (600, 400), (255, 255, 255))
     draw = ImageDraw.Draw(card)
     font = ImageFont.truetype("arial.ttf", 24)
@@ -51,62 +61,68 @@ def generate_id_card(data, photo_path):
 
 @app.route('/webhook', methods=['POST'])
 def whatsapp_bot():
-    incoming = request.form
-    phone = incoming.get('From').split(':')[-1]
-    msg = incoming.get('Body', '').strip()
-    media_url = incoming.get('MediaUrl0', '')
+    try:
+        incoming = request.form
+        phone = incoming.get('From').split(':')[-1]
+        msg = incoming.get('Body', '').strip()
+        media_url = incoming.get('MediaUrl0', '')
 
-    if phone not in sessions:
-        sessions[phone] = {'stage': 'name'}
-        send_whatsapp(f"whatsapp:+91{phone}", "Welcome to the Library. Please enter your full name:")
+        if phone not in sessions:
+            sessions[phone] = {'stage': 'name'}
+            send_whatsapp(f"whatsapp:+91{phone}", "Welcome to the Library. Please enter your full name:")
+            return "OK"
+
+        session = sessions[phone]
+
+        if session['stage'] == 'name':
+            session['name'] = msg
+            session['stage'] = 'father_name'
+            send_whatsapp(f"whatsapp:+91{phone}", "Enter your father's name:")
+        elif session['stage'] == 'father_name':
+            session['father_name'] = msg
+            session['stage'] = 'age'
+            send_whatsapp(f"whatsapp:+91{phone}", "Enter your age:")
+        elif session['stage'] == 'age':
+            session['age'] = msg
+            session['stage'] = 'shift'
+            send_whatsapp(f"whatsapp:+91{phone}", "Select shift (6/12/24 hours):")
+        elif session['stage'] == 'shift':
+            if msg not in LIBRARY_PLANS:
+                send_whatsapp(f"whatsapp:+91{phone}", "Please enter a valid shift: 6, 12, or 24.")
+            else:
+                session['shift'] = msg
+                session['amount'] = LIBRARY_PLANS[msg]
+                session['stage'] = 'photo'
+                send_whatsapp(f"whatsapp:+91{phone}", "Please upload your photo.")
+        elif session['stage'] == 'photo':
+            if not media_url:
+                send_whatsapp(f"whatsapp:+91{phone}", "Please send a photo to continue.")
+            else:
+                if not os.path.exists("static"):
+                    os.makedirs("static")
+                photo_path = f"static/{phone}.jpg"
+                r = requests.get(media_url)
+                with open(photo_path, 'wb') as f:
+                    f.write(r.content)
+                session['photo'] = photo_path
+
+                order = razorpay_client.order.create({
+                    "amount": session['amount'] * 100,
+                    "currency": "INR",
+                    "payment_capture": "1"
+                })
+                session['order_id'] = order['id']
+                session['stage'] = 'payment'
+
+                pay_link = f"https://rzp.io/l/{order['id']}"
+                send_whatsapp(f"whatsapp:+91{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
+        elif session['stage'] == 'payment':
+            send_whatsapp(f"whatsapp:+91{phone}", "Waiting for payment confirmation...")
+
         return "OK"
-
-    session = sessions[phone]
-
-    if session['stage'] == 'name':
-        session['name'] = msg
-        session['stage'] = 'father_name'
-        send_whatsapp(f"whatsapp:+91{phone}", "Enter your father's name:")
-    elif session['stage'] == 'father_name':
-        session['father_name'] = msg
-        session['stage'] = 'age'
-        send_whatsapp(f"whatsapp:+91{phone}", "Enter your age:")
-    elif session['stage'] == 'age':
-        session['age'] = msg
-        session['stage'] = 'shift'
-        send_whatsapp(f"whatsapp:+91{phone}", "Select shift (6/12/24 hours):")
-    elif session['stage'] == 'shift':
-        if msg not in LIBRARY_PLANS:
-            send_whatsapp(f"whatsapp:+91{phone}", "Please enter a valid shift: 6, 12, or 24.")
-        else:
-            session['shift'] = msg
-            session['amount'] = LIBRARY_PLANS[msg]
-            session['stage'] = 'photo'
-            send_whatsapp(f"whatsapp:+91{phone}", "Please upload your photo.")
-    elif session['stage'] == 'photo':
-        if not media_url:
-            send_whatsapp(f"whatsapp:+91{phone}", "Please send a photo to continue.")
-        else:
-            photo_path = f"static/{phone}.jpg"
-            r = requests.get(media_url)
-            with open(photo_path, 'wb') as f:
-                f.write(r.content)
-            session['photo'] = photo_path
-
-            order = razorpay_client.order.create({
-                "amount": session['amount'] * 100,
-                "currency": "INR",
-                "payment_capture": "1"
-            })
-            session['order_id'] = order['id']
-            session['stage'] = 'payment'
-
-            pay_link = f"https://rzp.io/l/{order['id']}"
-            send_whatsapp(f"whatsapp:+91{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
-
-    elif session['stage'] == 'payment':
-        send_whatsapp(f"whatsapp:+91{phone}", "Waiting for payment confirmation...")
-    return "OK"
+    except Exception as e:
+        print("Error in /webhook:", str(e))
+        return "Error", 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
