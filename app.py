@@ -69,7 +69,7 @@ def whatsapp_bot():
 
         if phone not in sessions:
             sessions[phone] = {'stage': 'name'}
-            send_whatsapp(f"whatsapp:+91{phone}", "Welcome to the Library. Please enter your full name:")
+            send_whatsapp(f"whatsapp:{phone}", "Welcome to the Library. Please enter your full name:")
             return "OK"
 
         session = sessions[phone]
@@ -77,26 +77,26 @@ def whatsapp_bot():
         if session['stage'] == 'name':
             session['name'] = msg
             session['stage'] = 'father_name'
-            send_whatsapp(f"whatsapp:+91{phone}", "Enter your father's name:")
+            send_whatsapp(f"whatsapp:{phone}", "Enter your father's name:")
         elif session['stage'] == 'father_name':
             session['father_name'] = msg
             session['stage'] = 'age'
-            send_whatsapp(f"whatsapp:+91{phone}", "Enter your age:")
+            send_whatsapp(f"whatsapp:{phone}", "Enter your age:")
         elif session['stage'] == 'age':
             session['age'] = msg
             session['stage'] = 'shift'
-            send_whatsapp(f"whatsapp:+91{phone}", "Select shift (6/12/24 hours):")
+            send_whatsapp(f"whatsapp:{phone}", "Select shift (6/12/24 hours):")
         elif session['stage'] == 'shift':
             if msg not in LIBRARY_PLANS:
-                send_whatsapp(f"whatsapp:+91{phone}", "Please enter a valid shift: 6, 12, or 24.")
+                send_whatsapp(f"whatsapp:{phone}", "Please enter a valid shift: 6, 12, or 24.")
             else:
                 session['shift'] = msg
                 session['amount'] = LIBRARY_PLANS[msg]
                 session['stage'] = 'photo'
-                send_whatsapp(f"whatsapp:+91{phone}", "Please upload your photo.")
+                send_whatsapp(f"whatsapp:{phone}", "Please upload your photo.")
         elif session['stage'] == 'photo':
             if not media_url:
-                send_whatsapp(f"whatsapp:+91{phone}", "Please send a photo to continue.")
+                send_whatsapp(f"whatsapp:{phone}", "Please send a photo to continue.")
             else:
                 if not os.path.exists("static"):
                     os.makedirs("static")
@@ -115,9 +115,9 @@ def whatsapp_bot():
                 session['stage'] = 'payment'
 
                 pay_link = f"https://rzp.io/l/{order['id']}"
-                send_whatsapp(f"whatsapp:+91{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
+                send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
         elif session['stage'] == 'payment':
-            send_whatsapp(f"whatsapp:+91{phone}", "Waiting for payment confirmation...")
+            send_whatsapp(f"whatsapp:{phone}", "Waiting for payment confirmation...")
 
         return "OK"
     except Exception as e:
