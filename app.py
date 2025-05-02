@@ -5,11 +5,12 @@ import os
 import requests
 import hmac
 import hashlib
-import imghdr
 import logging
-logging.basicConfig(level=logging.INFO)
-
+from io import BytesIO
+from imagekitio import ImageKit
 from twilio.rest import Client
+
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 
@@ -24,6 +25,12 @@ RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")
 twilio_client = Client(
     os.getenv("TWILIO_ACCOUNT_SID"),
     os.getenv("TWILIO_AUTH_TOKEN")
+)
+
+imagekit = ImageKit(
+    public_key=os.getenv("IMAGEKIT_PUBLIC_KEY"),
+    private_key=os.getenv("IMAGEKIT_PRIVATE_KEY"),
+    url_endpoint=os.getenv("IMAGEKIT_URL_ENDPOINT")
 )
 
 sessions = {}
@@ -45,13 +52,17 @@ def send_whatsapp(to, body, media_url=None):
     message = twilio_client.messages.create(to=to, **message_data)
     return message.sid
 
-def generate_id_card(data, photo_path):
-    if not os.path.exists("static"):
-        os.makedirs("static")
+def upload_to_imagekit_bytes(image_bytes, file_name):
+    result = imagekit.upload(
+        file=BytesIO(image_bytes),
+        file_name=file_name,
+        options={"use_unique_file_name": True}
+    )
+    return result.get("url")
 
+def generate_id_card(data, image_url=None):
     card = Image.new('RGB', (600, 400), (255, 255, 255))
     draw = ImageDraw.Draw(card)
-    from PIL import ImageFont
     font = ImageFont.load_default()
     draw.text((20, 20), f"Name: {data['name']}", font=font)
     draw.text((20, 60), f"Father's Name: {data['father_name']}", font=font)
@@ -60,12 +71,17 @@ def generate_id_card(data, photo_path):
     draw.text((20, 180), f"Phone: {data['phone']}", font=font)
     draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font)
 
-    #user_img = Image.open(photo_path).resize((100, 100))
-    #card.paste(user_img, (450, 20))
+    if image_url:
+        try:
+            response = requests.get(image_url)
+            user_img = Image.open(BytesIO(response.content)).resize((100, 100))
+            card.paste(user_img, (450, 20))
+        except Exception as e:
+            logging.warning("⚠️ Failed to load user photo:", str(e))
 
-    path = f"static/id_{data['phone']}.png"
-    card.save(path)
-    return path
+    output = BytesIO()
+    card.save(output, format='PNG')
+    return upload_to_imagekit_bytes(output.getvalue(), f"id_card_{data['phone']}.png")
 
 @app.route('/webhook', methods=['POST'])
 def whatsapp_bot():
@@ -78,7 +94,7 @@ def whatsapp_bot():
         if phone not in sessions:
             sessions[phone] = {
                 'stage': 'name',
-                'phone': phone  # ✅ store phone for later use
+                'phone': phone
             }
             send_whatsapp(f"whatsapp:{phone}", "Welcome to the Library. Please enter your full name:")
             return "OK"
@@ -108,17 +124,13 @@ def whatsapp_bot():
         elif session['stage'] == 'photo':
             if not media_url:
                 send_whatsapp(f"whatsapp:{phone}", "Please send a photo to continue.")
-            else:
-                if not os.path.exists("static"):
-                    os.makedirs("static")
-                photo_path = f"static/{phone}.jpg"
-                r = requests.get(media_url)
-                with open(photo_path, 'wb') as f:
-                    f.write(r.content)
-        
-                session['photo'] = photo_path
+                return "OK"
 
-                # Create Razorpay payment link instead of raw order
+            photo_response = requests.get(media_url)
+            if photo_response.status_code == 200:
+                user_photo_url = upload_to_imagekit_bytes(photo_response.content, f"photo_{phone}.jpg")
+                session['photo_url'] = user_photo_url
+
                 payment_link = razorpay_client.payment_link.create({
                     "amount": session['amount'] * 100,
                     "currency": "INR",
@@ -127,7 +139,7 @@ def whatsapp_bot():
                     "customer": {
                         "name": session['name'],
                         "contact": phone,
-                        "email": f"{phone}@example.com"  # Dummy email
+                        "email": f"{phone}@example.com"
                     },
                     "notify": {"sms": False, "email": False}
                 })
@@ -141,7 +153,7 @@ def whatsapp_bot():
 
         return "OK"
     except Exception as e:
-        logging.info("Error in /webhook:", str(e))
+        logging.info("Error in /webhook: %s", str(e))
         return "Error", 500
 
 @app.route("/razorpay_webhook", methods=["POST"])
@@ -151,8 +163,8 @@ def razorpay_webhook():
         payload = request.data
         received_signature = request.headers.get('X-Razorpay-Signature')
 
-        logging.info("📦 Received headers:", dict(request.headers))
-        logging.info("📨 Payload:", payload)
+        logging.info("📦 Received headers: %s", dict(request.headers))
+        logging.info("📨 Payload: %s", payload)
 
         generated_signature = hmac.new(
             bytes(RAZORPAY_WEBHOOK_SECRET, 'utf-8'),
@@ -162,7 +174,7 @@ def razorpay_webhook():
 
         if hmac.compare_digest(received_signature, generated_signature):
             data = request.get_json()
-            logging.info("✅ Verified webhook payload:", data)
+            logging.info("✅ Verified webhook payload: %s", data)
             if data.get("event") == "payment_link.paid":
                 entity = data['payload']['payment_link']['entity']
                 contact = entity['customer']['contact']
@@ -172,18 +184,18 @@ def razorpay_webhook():
 
                 if session:
                     logging.info("📇 Session found, generating ID card...")
-                    card_path = generate_id_card(session, session['photo'])
-                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://library-chatbott.onrender.com/{card_path}")
+                    id_card_url = generate_id_card(session, session.get('photo_url'))
+                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=id_card_url)
                     session['stage'] = 'done'
                 else:
-                    logging.info("⚠️ No session found for phone:", phone)
+                    logging.info("⚠️ No session found for phone: %s", phone)
 
             return jsonify({"status": "ok"}), 200
         else:
             logging.info("❌ Signature verification failed")
             return jsonify({"status": "invalid signature"}), 403
     except Exception as e:
-        logging.info("Webhook error:", str(e))
+        logging.info("Webhook error: %s", str(e))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
