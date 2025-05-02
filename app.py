@@ -129,6 +129,8 @@ def whatsapp_bot():
             photo_response = requests.get(media_url)
             if photo_response.status_code == 200:
                 user_photo_url = upload_to_imagekit_bytes(photo_response.content, f"photo_{phone}.jpg")
+                logging.info("User photo URL:")
+                logging.info(user_photo_url)
                 session['photo_url'] = user_photo_url
 
                 payment_link = razorpay_client.payment_link.create({
