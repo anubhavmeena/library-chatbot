@@ -173,7 +173,7 @@ def razorpay_webhook():
                 if session:
                     logging.info("📇 Session found, generating ID card...")
                     card_path = generate_id_card(session, session['photo'])
-                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://yourdomain.com/{card_path}")
+                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://library-chatbott.onrender.com/{card_path}")
                     session['stage'] = 'done'
                 else:
                     logging.info("⚠️ No session found for phone:", phone)
