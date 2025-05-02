@@ -60,7 +60,7 @@ def upload_to_imagekit_bytes(image_bytes, file_name):
     )
     return result.get("url")
 
-def generate_id_card(data, image_url=None):
+def generate_id_card(data):
     card = Image.new('RGB', (600, 400), (255, 255, 255))
     draw = ImageDraw.Draw(card)
     font = ImageFont.load_default()
@@ -71,13 +71,14 @@ def generate_id_card(data, image_url=None):
     draw.text((20, 180), f"Phone: {data['phone']}", font=font)
     draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font)
 
-    if image_url:
-        try:
-            response = requests.get(image_url)
-            user_img = Image.open(BytesIO(response.content)).resize((100, 100))
-            card.paste(user_img, (450, 20))
-        except Exception as e:
-            logging.warning("⚠️ Failed to load user photo:", str(e))
+    # Optional placeholder image
+    try:
+        placeholder_url = "https://via.placeholder.com/100x100.png?text=Photo"
+        response = requests.get(placeholder_url)
+        user_img = Image.open(BytesIO(response.content)).resize((100, 100))
+        card.paste(user_img, (450, 20))
+    except Exception as e:
+        logging.warning("⚠️ Failed to load placeholder photo:", str(e))
 
     output = BytesIO()
     card.save(output, format='PNG')
@@ -89,7 +90,6 @@ def whatsapp_bot():
         incoming = request.form
         phone = incoming.get('From').split(':')[-1]
         msg = incoming.get('Body', '').strip()
-        media_url = incoming.get('MediaUrl0', '')
 
         if phone not in sessions:
             sessions[phone] = {
@@ -119,19 +119,7 @@ def whatsapp_bot():
             else:
                 session['shift'] = msg
                 session['amount'] = LIBRARY_PLANS[msg]
-                session['stage'] = 'photo'
-                send_whatsapp(f"whatsapp:{phone}", "Please upload your photo.")
-        elif session['stage'] == 'photo':
-            if not media_url:
-                send_whatsapp(f"whatsapp:{phone}", "Please send a photo to continue.")
-                return "OK"
-
-            photo_response = requests.get(media_url)
-            if photo_response.status_code == 200:
-                user_photo_url = upload_to_imagekit_bytes(photo_response.content, f"photo_{phone}.jpg")
-                logging.info("User photo URL:")
-                logging.info(user_photo_url)
-                session['photo_url'] = user_photo_url
+                session['stage'] = 'payment'
 
                 payment_link = razorpay_client.payment_link.create({
                     "amount": session['amount'] * 100,
@@ -147,7 +135,6 @@ def whatsapp_bot():
                 })
 
                 session['payment_link_id'] = payment_link['id']
-                session['stage'] = 'payment'
                 send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {payment_link['short_url']}")
 
         elif session['stage'] == 'payment':
@@ -186,7 +173,7 @@ def razorpay_webhook():
 
                 if session:
                     logging.info("📇 Session found, generating ID card...")
-                    id_card_url = generate_id_card(session, session.get('photo_url'))
+                    id_card_url = generate_id_card(session)
                     send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=id_card_url)
                     session['stage'] = 'done'
                 else:
