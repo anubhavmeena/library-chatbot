@@ -84,7 +84,7 @@ def generate_id_card(data):
     logging.info("🔔 Generate ID uploading")
     upload = imagekit.upload_file(
         file=buffer,
-        file_name=f"id_{data['phone']}.png",
+        file_name=f"id_{session['phone']}.jpg",
         options={"folder": "/id_cards"}
     )
     logging.info("🔔 Generate ID uploaded url")
