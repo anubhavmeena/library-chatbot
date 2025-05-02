@@ -5,6 +5,7 @@ import os
 import requests
 import hmac
 import hashlib
+import imghdr
 
 from twilio.rest import Client
 
