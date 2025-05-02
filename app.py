@@ -6,6 +6,8 @@ import requests
 import hmac
 import hashlib
 import imghdr
+import logging
+logging.basicConfig(level=logging.INFO)
 
 from twilio.rest import Client
 
