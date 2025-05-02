@@ -49,7 +49,6 @@ def generate_id_card(data, photo_path):
 
     card = Image.new('RGB', (600, 400), (255, 255, 255))
     draw = ImageDraw.Draw(card)
-    from PIL import ImageFont
     font = ImageFont.load_default()
     draw.text((20, 20), f"Name: {data['name']}", font=font)
     draw.text((20, 60), f"Father's Name: {data['father_name']}", font=font)
@@ -58,14 +57,24 @@ def generate_id_card(data, photo_path):
     draw.text((20, 180), f"Phone: {data['phone']}", font=font)
     draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font)
 
-    user_img = Image.open(photo_path).resize((100, 100))
-    card.paste(user_img, (450, 20))
+    try:
+        user_img = Image.open(photo_path).resize((100, 100))
+        card.paste(user_img, (450, 20))
+    except Exception as e:
+        print("🖼️ Failed to open photo:", str(e))
 
     path = f"static/id_{data['phone']}.png"
     card.save(path)
+
+    # ✅ Auto-delete photo after use
+    try:
+        os.remove(photo_path)
+    except Exception as e:
+        print("⚠️ Failed to delete photo:", str(e))
+
     return path
 
-@app.route('/webhook', methods=['POST'])
+@app.route("/webhook", methods=["POST"])
 def whatsapp_bot():
     try:
         incoming = request.form
@@ -74,10 +83,7 @@ def whatsapp_bot():
         media_url = incoming.get('MediaUrl0', '')
 
         if phone not in sessions:
-            sessions[phone] = {
-                'stage': 'name',
-                'phone': phone  # ✅ store phone for later use
-            }
+            sessions[phone] = {'stage': 'name', 'phone': phone}
             send_whatsapp(f"whatsapp:{phone}", "Welcome to the Library. Please enter your full name:")
             return "OK"
 
@@ -113,27 +119,25 @@ def whatsapp_bot():
                 r = requests.get(media_url)
                 with open(photo_path, 'wb') as f:
                     f.write(r.content)
-        
+
+                # ✅ Validate image content
+                if imghdr.what(photo_path) is None:
+                    send_whatsapp(f"whatsapp:{phone}", "The file you sent is not a valid image. Please resend.")
+                    os.remove(photo_path)
+                    return "OK"
+
                 session['photo'] = photo_path
 
-                # Create Razorpay payment link instead of raw order
-                payment_link = razorpay_client.payment_link.create({
+                order = razorpay_client.order.create({
                     "amount": session['amount'] * 100,
                     "currency": "INR",
-                    "accept_partial": False,
-                    "description": "Library Membership",
-                    "customer": {
-                        "name": session['name'],
-                        "contact": phone,
-                        "email": f"{phone}@example.com"  # Dummy email
-                    },
-                    "notify": {"sms": False, "email": False}
+                    "payment_capture": "1"
                 })
-
-                session['payment_link_id'] = payment_link['id']
+                session['order_id'] = order['id']
                 session['stage'] = 'payment'
-                send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {payment_link['short_url']}")
 
+                pay_link = f"https://rzp.io/l/{order['id']}"
+                send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
         elif session['stage'] == 'payment':
             send_whatsapp(f"whatsapp:{phone}", "Waiting for payment confirmation...")
 
@@ -141,49 +145,3 @@ def whatsapp_bot():
     except Exception as e:
         print("Error in /webhook:", str(e))
         return "Error", 500
-
-@app.route("/razorpay_webhook", methods=["POST"])
-def razorpay_webhook():
-    try:
-        print("🔔 Webhook triggered")
-        payload = request.data
-        received_signature = request.headers.get('X-Razorpay-Signature')
-
-        print("📦 Received headers:", dict(request.headers))
-        print("📨 Payload:", payload)
-
-        generated_signature = hmac.new(
-            bytes(RAZORPAY_WEBHOOK_SECRET, 'utf-8'),
-            msg=payload,
-            digestmod=hashlib.sha256
-        ).hexdigest()
-
-        if hmac.compare_digest(received_signature, generated_signature):
-            data = request.get_json()
-            print("✅ Verified webhook payload:", data)
-            if data.get("event") == "payment_link.paid":
-                entity = data['payload']['payment_link']['entity']
-                contact = entity['customer']['contact']
-                phone = contact.replace('+91', '')
-                print(f"Looking for session with phone: {phone}")
-                session = sessions.get(phone) or sessions.get(f"+91{phone}") or sessions.get(f"whatsapp:+91{phone}")
-
-                if session:
-                    print("📇 Session found, generating ID card...")
-                    card_path = generate_id_card(session, session['photo'])
-                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://yourdomain.com/{card_path}")
-                    session['stage'] = 'done'
-                else:
-                    print("⚠️ No session found for phone:", phone)
-
-            return jsonify({"status": "ok"}), 200
-        else:
-            print("❌ Signature verification failed")
-            return jsonify({"status": "invalid signature"}), 403
-    except Exception as e:
-        print("Webhook error:", str(e))
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
