@@ -108,12 +108,18 @@ def whatsapp_bot():
             else:
                 if not os.path.exists("static"):
                     os.makedirs("static")
-                phone_clean = phone.replace('+91', '')
-                photo_path = f"static/{phone_clean}.jpg"
+                photo_path = f"static/{phone}.jpg"
                 r = requests.get(media_url)
                 with open(photo_path, 'wb') as f:
                     f.write(r.content)
-                session['photo'] = photo_path
+
+        # ✅ Validate image type
+        if imghdr.what(photo_path) is None:
+            send_whatsapp(f"whatsapp:{phone}", "The file you sent is not a valid image. Please resend.")
+            os.remove(photo_path)
+            return "OK"
+
+        session['photo'] = photo_path
 
                 # Create Razorpay payment link instead of raw order
                 payment_link = razorpay_client.payment_link.create({
