@@ -73,10 +73,10 @@ def whatsapp_bot():
         media_url = incoming.get('MediaUrl0', '')
 
         if phone not in sessions:
-        sessions[phone] = {
-            'stage': 'name',
-            'phone': phone  # ✅ store phone for later use
-        }
+            sessions[phone] = {
+                'stage': 'name',
+                'phone': phone  # ✅ store phone for later use
+            }
         send_whatsapp(f"whatsapp:{phone}", "Welcome to the Library. Please enter your full name:")
         return "OK"
 
