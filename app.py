@@ -108,7 +108,8 @@ def whatsapp_bot():
             else:
                 if not os.path.exists("static"):
                     os.makedirs("static")
-                photo_path = f"static/{phone}.jpg"
+                phone_clean = phone.replace('+91', '')
+                photo_path = f"static/{phone_clean}.jpg"
                 r = requests.get(media_url)
                 with open(photo_path, 'wb') as f:
                     f.write(r.content)
