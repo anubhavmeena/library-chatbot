@@ -82,11 +82,16 @@ def generate_id_card(data):
     logging.info("🔔 Generate ID card saved")
     buffer.seek(0)
     logging.info("🔔 Generate ID uploading")
-    
+
+    upload = imagekit.upload(
+        file=buffer,
+        file_name=f"id_{data['phone']}.png",
+        options={"use_unique_file_name": True}
+    )
     
     logging.info("🔔 Generate ID uploaded url")
     logging.info(upload['url'])
-    return result.get("url")
+    return upload.get("url")
 
 @app.route('/webhook', methods=['POST'])
 def whatsapp_bot():
