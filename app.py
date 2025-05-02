@@ -48,7 +48,8 @@ def generate_id_card(data, photo_path):
 
     card = Image.new('RGB', (600, 400), (255, 255, 255))
     draw = ImageDraw.Draw(card)
-    font = ImageFont.truetype("arial.ttf", 24)
+    from PIL import ImageFont
+    font = ImageFont.load_default()
     draw.text((20, 20), f"Name: {data['name']}", font=font)
     draw.text((20, 60), f"Father's Name: {data['father_name']}", font=font)
     draw.text((20, 100), f"Age: {data['age']}", font=font)
