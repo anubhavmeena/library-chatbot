@@ -63,17 +63,35 @@ def upload_to_imagekit_bytes(image_bytes, file_name):
 def generate_id_card(data):
     card = Image.new('RGB', (600, 400), (255, 255, 255))
     draw = ImageDraw.Draw(card)
-    font = ImageFont.load_default()
-    draw.text((20, 20), f"Name: {data['name']}", font=font)
-    draw.text((20, 60), f"Father's Name: {data['father_name']}", font=font)
-    draw.text((20, 100), f"Age: {data['age']}", font=font)
-    draw.text((20, 140), f"Shift: {data['shift']} Hours", font=font)
-    draw.text((20, 180), f"Phone: {data['phone']}", font=font)
-    draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font)
+    font = ImageFont.truetype("arial.ttf", 24)
 
-    output = BytesIO()
-    card.save(output, format='PNG')
-    return upload_to_imagekit_bytes(output.getvalue(), f"id_card_{data['phone']}.png")
+    draw.text((20, 20), f"Name: {data['name']}", font=font, fill=(0, 0, 0))
+    draw.text((20, 60), f"Father's Name: {data['father_name']}", font=font, fill=(0, 0, 0))
+    draw.text((20, 100), f"Age: {data['age']}", font=font, fill=(0, 0, 0))
+    draw.text((20, 140), f"Shift: {data['shift']} Hours", font=font, fill=(0, 0, 0))
+    draw.text((20, 180), f"Phone: {data['phone']}", font=font, fill=(0, 0, 0))
+    draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font, fill=(0, 0, 0))
+
+    # Draw placeholder photo box
+    photo_box = (450, 20, 550, 120)
+    draw.rectangle(photo_box, outline="black", width=2)
+    label_font = ImageFont.truetype("arial.ttf", 16)
+    text = "Photo"
+    text_width, text_height = draw.textsize(text, font=label_font)
+    text_x = photo_box[0] + (photo_box[2] - photo_box[0] - text_width) / 2
+    text_y = photo_box[1] + (photo_box[3] - photo_box[1] - text_height) / 2
+    draw.text((text_x, text_y), text, font=label_font, fill=(100, 100, 100))
+
+    buffer = BytesIO()
+    card.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    upload = imagekit.upload_file(
+        file=buffer,
+        file_name=f"id_{data['phone']}.png",
+        options={"folder": "/id_cards"}
+    )
+    return upload.get("url")
 
 @app.route('/webhook', methods=['POST'])
 def whatsapp_bot():
