@@ -71,15 +71,6 @@ def generate_id_card(data):
     draw.text((20, 180), f"Phone: {data['phone']}", font=font)
     draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font)
 
-    # Optional placeholder image
-    try:
-        #placeholder_url = "https://home.engineering.iastate.edu/alexs/classes/2019_Spring_575/HW/HW2/placeholders/placeholder.jpg"
-        #response = requests.get(placeholder_url)
-        #user_img = Image.open(BytesIO(response.content)).resize((100, 100))
-        #card.paste(user_img, (450, 20))
-    except Exception as e:
-        logging.warning("⚠️ Failed to load placeholder photo:", str(e))
-
     output = BytesIO()
     card.save(output, format='PNG')
     return upload_to_imagekit_bytes(output.getvalue(), f"id_card_{data['phone']}.png")
