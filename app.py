@@ -139,18 +139,18 @@ def whatsapp_bot():
 
         return "OK"
     except Exception as e:
-        print("Error in /webhook:", str(e))
+        logging.info("Error in /webhook:", str(e))
         return "Error", 500
 
 @app.route("/razorpay_webhook", methods=["POST"])
 def razorpay_webhook():
     try:
-        print("🔔 Webhook triggered")
+        logging.info("🔔 Webhook triggered")
         payload = request.data
         received_signature = request.headers.get('X-Razorpay-Signature')
 
-        print("📦 Received headers:", dict(request.headers))
-        print("📨 Payload:", payload)
+        logging.info("📦 Received headers:", dict(request.headers))
+        logging.info("📨 Payload:", payload)
 
         generated_signature = hmac.new(
             bytes(RAZORPAY_WEBHOOK_SECRET, 'utf-8'),
@@ -160,28 +160,28 @@ def razorpay_webhook():
 
         if hmac.compare_digest(received_signature, generated_signature):
             data = request.get_json()
-            print("✅ Verified webhook payload:", data)
+            logging.info("✅ Verified webhook payload:", data)
             if data.get("event") == "payment_link.paid":
                 entity = data['payload']['payment_link']['entity']
                 contact = entity['customer']['contact']
                 phone = contact.replace('+91', '')
-                print(f"Looking for session with phone: {phone}")
+                logging.info(f"Looking for session with phone: {phone}")
                 session = sessions.get(phone) or sessions.get(f"+91{phone}") or sessions.get(f"whatsapp:+91{phone}")
 
                 if session:
-                    print("📇 Session found, generating ID card...")
+                    logging.info("📇 Session found, generating ID card...")
                     card_path = generate_id_card(session, session['photo'])
                     send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://yourdomain.com/{card_path}")
                     session['stage'] = 'done'
                 else:
-                    print("⚠️ No session found for phone:", phone)
+                    logging.info("⚠️ No session found for phone:", phone)
 
             return jsonify({"status": "ok"}), 200
         else:
-            print("❌ Signature verification failed")
+            logging.info("❌ Signature verification failed")
             return jsonify({"status": "invalid signature"}), 403
     except Exception as e:
-        print("Webhook error:", str(e))
+        logging.info("Webhook error:", str(e))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
