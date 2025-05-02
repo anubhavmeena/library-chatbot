@@ -77,8 +77,8 @@ def whatsapp_bot():
                 'stage': 'name',
                 'phone': phone  # ✅ store phone for later use
             }
-        send_whatsapp(f"whatsapp:{phone}", "Welcome to the Library. Please enter your full name:")
-        return "OK"
+            send_whatsapp(f"whatsapp:{phone}", "Welcome to the Library. Please enter your full name:")
+            return "OK"
 
         session = sessions[phone]
 
