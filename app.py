@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageFont
 import razorpay
 import os
 import requests
@@ -10,7 +10,6 @@ from twilio.rest import Client
 
 app = Flask(__name__)
 
-# Load secrets from environment variables
 razorpay_client = razorpay.Client(auth=(
     os.getenv("RAZORPAY_KEY_ID"),
     os.getenv("RAZORPAY_SECRET")
@@ -42,7 +41,7 @@ def send_whatsapp(to, body, media_url=None):
     message = twilio_client.messages.create(to=to, **message_data)
     return message.sid
 
-def generate_id_card(data, photo_path):
+def generate_id_card(data, photo_path=None):
     if not os.path.exists("static"):
         os.makedirs("static")
 
@@ -56,20 +55,21 @@ def generate_id_card(data, photo_path):
     draw.text((20, 180), f"Phone: {data['phone']}", font=font)
     draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font)
 
-    try:
-        user_img = Image.open(photo_path).resize((100, 100))
-        card.paste(user_img, (450, 20))
-    except Exception as e:
-        print("🖼️ Failed to open photo:", str(e))
+    if photo_path and os.path.exists(photo_path):
+        try:
+            user_img = Image.open(photo_path).resize((100, 100))
+            card.paste(user_img, (450, 20))
+        except Exception as e:
+            print("🖼️ Skipping photo due to error:", str(e))
 
     path = f"static/id_{data['phone']}.png"
     card.save(path)
 
-    # ✅ Auto-delete photo after use
-    try:
-        os.remove(photo_path)
-    except Exception as e:
-        print("⚠️ Failed to delete photo:", str(e))
+    if photo_path and os.path.exists(photo_path):
+        try:
+            os.remove(photo_path)
+        except Exception as e:
+            print("⚠️ Failed to delete photo:", str(e))
 
     return path
 
@@ -110,7 +110,7 @@ def whatsapp_bot():
                 send_whatsapp(f"whatsapp:{phone}", "Please upload your photo.")
         elif session['stage'] == 'photo':
             if not media_url:
-                send_whatsapp(f"whatsapp:{phone}", "Please send a photo to continue.")
+                session['photo'] = None
             else:
                 if not os.path.exists("static"):
                     os.makedirs("static")
@@ -119,27 +119,24 @@ def whatsapp_bot():
                 with open(photo_path, 'wb') as f:
                     f.write(r.content)
 
-                # ✅ Validate image with Pillow
                 try:
-                    with Image.open(photo_path) as img:
-                        img.verify()
-                except UnidentifiedImageError:
-                    os.remove(photo_path)
-                    send_whatsapp(f"whatsapp:{phone}", "The file you sent is not a valid image. Please resend.")
-                    return "OK"
+                    img = Image.open(photo_path)
+                    img.load()
+                    session['photo'] = photo_path
+                except Exception:
+                    print("⚠️ Invalid image received, proceeding without photo.")
+                    session['photo'] = None
 
-                session['photo'] = photo_path
+            order = razorpay_client.order.create({
+                "amount": session['amount'] * 100,
+                "currency": "INR",
+                "payment_capture": "1"
+            })
+            session['order_id'] = order['id']
+            session['stage'] = 'payment'
 
-                order = razorpay_client.order.create({
-                    "amount": session['amount'] * 100,
-                    "currency": "INR",
-                    "payment_capture": "1"
-                })
-                session['order_id'] = order['id']
-                session['stage'] = 'payment'
-
-                pay_link = f"https://rzp.io/l/{order['id']}"
-                send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
+            pay_link = f"https://rzp.io/l/{order['id']}"
+            send_whatsapp(f"whatsapp:{phone}", f"Please pay Rs. {session['amount']} using this link: {pay_link}")
         elif session['stage'] == 'payment':
             send_whatsapp(f"whatsapp:{phone}", "Waiting for payment confirmation...")
 
