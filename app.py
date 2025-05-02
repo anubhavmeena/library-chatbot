@@ -1,11 +1,10 @@
 from flask import Flask, request, jsonify
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 import razorpay
 import os
 import requests
 import hmac
 import hashlib
-import imghdr
 
 from twilio.rest import Client
 
@@ -120,10 +119,13 @@ def whatsapp_bot():
                 with open(photo_path, 'wb') as f:
                     f.write(r.content)
 
-                # ✅ Validate image content
-                if imghdr.what(photo_path) is None:
-                    send_whatsapp(f"whatsapp:{phone}", "The file you sent is not a valid image. Please resend.")
+                # ✅ Validate image with Pillow
+                try:
+                    with Image.open(photo_path) as img:
+                        img.verify()
+                except UnidentifiedImageError:
                     os.remove(photo_path)
+                    send_whatsapp(f"whatsapp:{phone}", "The file you sent is not a valid image. Please resend.")
                     return "OK"
 
                 session['photo'] = photo_path
