@@ -6,7 +6,7 @@ import requests
 import hmac
 import hashlib
 import logging
-from io import BytesIO
+import io
 from imagekitio import ImageKit
 from twilio.rest import Client
 
@@ -54,7 +54,7 @@ def send_whatsapp(to, body, media_url=None):
 
 def upload_to_imagekit_bytes(image_bytes, file_name):
     result = imagekit.upload(
-        file=BytesIO(image_bytes),
+        file=io.BytesIO(image_bytes),
         file_name=file_name,
         options={"use_unique_file_name": True}
     )
