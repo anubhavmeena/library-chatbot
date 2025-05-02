@@ -61,10 +61,11 @@ def upload_to_imagekit_bytes(image_bytes, file_name):
     return result.get("url")
 
 def generate_id_card(data):
+    logging.info("🔔 Generate ID triggered")
     card = Image.new('RGB', (600, 400), (255, 255, 255))
     draw = ImageDraw.Draw(card)
-    font = ImageFont.truetype("arial.ttf", 24)
-
+    font = ImageFont.load_default()
+    logging.info("🔔 Generate ID font loaded")
     draw.text((20, 20), f"Name: {data['name']}", font=font, fill=(0, 0, 0))
     draw.text((20, 60), f"Father's Name: {data['father_name']}", font=font, fill=(0, 0, 0))
     draw.text((20, 100), f"Age: {data['age']}", font=font, fill=(0, 0, 0))
@@ -72,26 +73,23 @@ def generate_id_card(data):
     draw.text((20, 180), f"Phone: {data['phone']}", font=font, fill=(0, 0, 0))
     draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font, fill=(0, 0, 0))
 
-    # Draw placeholder photo box
-    photo_box = (450, 20, 550, 120)
-    draw.rectangle(photo_box, outline="black", width=2)
-    label_font = ImageFont.truetype("arial.ttf", 16)
-    text = "Photo"
-    text_width, text_height = draw.textsize(text, font=label_font)
-    text_x = photo_box[0] + (photo_box[2] - photo_box[0] - text_width) / 2
-    text_y = photo_box[1] + (photo_box[3] - photo_box[1] - text_height) / 2
-    draw.text((text_x, text_y), text, font=label_font, fill=(100, 100, 100))
-
-    buffer = BytesIO()
+    # Draw placeholder rectangle with label
+    draw.rectangle([450, 20, 550, 120], outline="black", width=2)
+    draw.text((460, 60), "Photo", font=font, fill=(0, 0, 0))
+    logging.info("🔔 Generate ID text drawn")
+    buffer = io.BytesIO()
     card.save(buffer, format="PNG")
+    logging.info("🔔 Generate ID card saved")
     buffer.seek(0)
-
+    logging.info("🔔 Generate ID uploading")
     upload = imagekit.upload_file(
         file=buffer,
         file_name=f"id_{data['phone']}.png",
         options={"folder": "/id_cards"}
     )
-    return upload.get("url")
+    logging.info("🔔 Generate ID uploaded url")
+    logging.info(upload['url'])
+    return upload['url']
 
 @app.route('/webhook', methods=['POST'])
 def whatsapp_bot():
