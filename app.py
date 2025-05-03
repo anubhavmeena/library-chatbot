@@ -113,9 +113,10 @@ def whatsapp_bot():
                 if not os.path.exists("static"):
                     os.makedirs("static")
                 photo_path = f"static/{phone}.jpg"
-                r = requests.get(media_url)
+                r = requests.get(media_url, auth=(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN")))
                 with open(photo_path, 'wb') as f:
                     f.write(r.content)
+
         
                 session['photo'] = photo_path
 
