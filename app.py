@@ -151,8 +151,8 @@ def razorpay_webhook():
         payload = request.data
         received_signature = request.headers.get('X-Razorpay-Signature')
 
-        logging.info("📦 Received headers:", dict(request.headers))
-        logging.info("📨 Payload:", payload)
+        logging.info(f"📦 Received headers: {dict(request.headers)}")
+        logging.info(f"📨 Payload: {payload}")
 
         generated_signature = hmac.new(
             bytes(RAZORPAY_WEBHOOK_SECRET, 'utf-8'),
@@ -176,7 +176,7 @@ def razorpay_webhook():
                     send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://library-chatbott.onrender.com/{card_path}")
                     session['stage'] = 'done'
                 else:
-                    logging.info("⚠️ No session found for phone:", phone)
+                    logging.info(f"⚠️ No session found for phone:{ phone}")
 
             return jsonify({"status": "ok"}), 200
         else:
