@@ -60,11 +60,12 @@ def generate_id_card(data, photo_path):
     draw.text((20, 180), f"Phone: {data['phone']}", font=font)
     draw.text((20, 220), f"Paid: Rs. {data['amount']}", font=font)
 
-    #user_img = Image.open(photo_path).resize((100, 100))
-    #card.paste(user_img, (450, 20))
+    user_img = Image.open(photo_path).resize((100, 100))
+    card.paste(user_img, (450, 20))
 
     path = f"static/id_{data['phone']}.png"
     card.save(path)
+    logging.info("ID path is:",path)
     return path
 
 @app.route('/webhook', methods=['POST'])
@@ -173,7 +174,7 @@ def razorpay_webhook():
                 if session:
                     logging.info("📇 Session found, generating ID card...")
                     card_path = generate_id_card(session, session['photo'])
-                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"https://library-chatbott.onrender.com/{card_path}")
+                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"http://ec2-16-16-216-109.eu-north-1.compute.amazonaws.com:5000/{card_path}")
                     session['stage'] = 'done'
                 else:
                     logging.info(f"⚠️ No session found for phone:{ phone}")
