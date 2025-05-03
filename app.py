@@ -7,11 +7,20 @@ import hmac
 import hashlib
 import imghdr
 import logging
+import boto3
+
 logging.basicConfig(level=logging.INFO)
 
 from twilio.rest import Client
 
 app = Flask(__name__)
+
+# AWS credentials (set securely via environment or IAM roles)
+s3 = boto3.client(
+    's3',
+    aws_access_key_id='YOUR_ACCESS_KEY',
+    aws_secret_access_key='YOUR_SECRET_KEY'
+)
 
 # Load secrets from environment variables
 razorpay_client = razorpay.Client(auth=(
@@ -34,6 +43,11 @@ LIBRARY_PLANS = {
     "24": 600
 }
 
+def upload_to_s3(file_path, bucket_name, object_name):
+    s3.upload_file(file_path, bucket_name, object_name, ExtraArgs={'ACL': 'public-read'})
+    url = f"https://{bucket_name}.s3.amazonaws.com/{object_name}"
+    return url
+    
 def send_whatsapp(to, body, media_url=None):
     message_data = {
         'from_': 'whatsapp:+14155238886',
@@ -65,8 +79,10 @@ def generate_id_card(data, photo_path):
 
     path = f"static/id_{data['phone']}.png"
     card.save(path)
-    logging.info("ID path is:",path)
-    return path
+    head, tail = os.path.split(path)
+    id_card_s3_path = upload_to_s3(path, 'library-id-cards', tail)
+    logging.info("ID path is:",id_card_s3_path)
+    return id_card_s3_path
 
 @app.route('/webhook', methods=['POST'])
 def whatsapp_bot():
