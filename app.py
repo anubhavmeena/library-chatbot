@@ -44,7 +44,7 @@ LIBRARY_PLANS = {
 }
 
 def upload_to_s3(file_path, bucket_name, object_name):
-    s3.upload_file(file_path, bucket_name, object_name, ExtraArgs={'ACL': 'public-read'})
+    s3.upload_file(file_path, bucket_name, object_name})
     url = f"https://{bucket_name}.s3.amazonaws.com/{object_name}"
     return url
     
