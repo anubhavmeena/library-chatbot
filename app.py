@@ -43,7 +43,12 @@ LIBRARY_PLANS = {
     "12": 500,
     "24": 600
 }
-
+try:
+    font = ImageFont.truetype("fonts/Roboto-Regular.ttf", 24)
+except IOError:
+    print("Font not found, using default.")
+    font = ImageFont.load_default()
+    
 def upload_to_s3(file_path, bucket_name, s3_key):
     s3 = boto3.client('s3')
 
