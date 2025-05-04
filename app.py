@@ -8,6 +8,7 @@ import hashlib
 import imghdr
 import logging
 import boto3
+import urllib.parse
 
 logging.basicConfig(level=logging.INFO)
 
@@ -43,11 +44,26 @@ LIBRARY_PLANS = {
     "24": 600
 }
 
-def upload_to_s3(file_path, bucket_name, object_name):
-    s3.upload_file(file_path, bucket_name, object_name)
-    url = f"https://{bucket_name}.s3.amazonaws.com/{object_name}"
-    return url
-    
+def upload_to_s3(file_path, bucket_name, s3_key):
+    s3 = boto3.client('s3')
+
+    try:
+        s3.upload_file(
+            Filename=file_path,
+            Bucket=bucket_name,
+            Key=s3_key,
+            ExtraArgs={'ACL': 'public-read',  # ✅ Enable public read
+            'ContentType': 'image/png'}
+        )
+
+        encoded_key = urllib.parse.quote(s3_key)
+        public_url = f"https://{bucket_name}.s3.eu-north-1.amazonaws.com/{encoded_key}"
+
+        return public_url
+    except Exception as e:
+        print(f"Upload failed: {e}")
+        return None
+
 def send_whatsapp(to, body, media_url=None):
     message_data = {
         'from_': 'whatsapp:+14155238886',
@@ -191,7 +207,8 @@ def razorpay_webhook():
                 if session:
                     logging.info("📇 Session found, generating ID card...")
                     card_path = generate_id_card(session, session['photo'])
-                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"http://ec2-16-16-216-109.eu-north-1.compute.amazonaws.com:5000/{card_path}")
+                    logging.info("ID_CARD path:",card_path)
+                    send_whatsapp(f"whatsapp:{phone}", "✅ Payment received! Here is your Library ID Card:", media_url=f"{card_path}")
                     session['stage'] = 'done'
                 else:
                     logging.info(f"⚠️ No session found for phone:{ phone}")
