@@ -9,6 +9,7 @@ import imghdr
 import logging
 import boto3
 import urllib.parse
+import qrcode
 
 logging.basicConfig(level=logging.INFO)
 
