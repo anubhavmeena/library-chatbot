@@ -20,8 +20,8 @@ app = Flask(__name__)
 # AWS credentials (set securely via environment or IAM roles)
 s3 = boto3.client(
     's3',
-    aws_access_key_id='AKIAUIU535QGLA5X6PGS',
-    aws_secret_access_key='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'
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 )
 
 # Load secrets from environment variables
